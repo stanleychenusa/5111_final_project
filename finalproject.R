@@ -17,6 +17,9 @@ library(stringr)
 # Load and clean data
 delay_data <- read_csv("Airline_Delay_Cause.csv")
 
+fare_passengers_data <- read_csv("AverageFare_Q4_2024.csv", skip = 1)
+fare_passengers_data <- fare_passengers_data[1:8]
+
 # Clean column names
 colnames(delay_data) <- gsub("[^A-Za-z0-9_]", "_", colnames(delay_data))
 
@@ -42,6 +45,17 @@ delay_data_clean <- delay_data %>%
     !is.na(airport_name)
   )
 
+# pick the join‐key (e.g. Airport Code) plus two columns, and rename them:
+fare_keyed <- fare_passengers_data %>%
+  select(
+    airport = `Airport Code`,
+    avg_fare      = `Average Fare ($)`,
+    passengers_10_pct    = `2024 Passengers (10% sample)`
+  )
+
+# left_join onto delays data
+delay_data_clean <- delay_data_clean %>%
+  left_join(fare_keyed, by = "airport")
 
 # Delay cause breakdown
 cause_columns <- c("carrier_delay", "weather_delay", "nas_delay", "security_delay", "late_aircraft_delay")
@@ -69,6 +83,8 @@ ui <- fluidPage(
         tabPanel("Delay Causes", plotOutput("delayCausePlot")),
         tabPanel("Avg Delay per Flight", plotOutput("avgDelayPlot")),
         tabPanel("Delay Heatmap by State", plotOutput("stateHeatmap")),
+        tabPanel("Fare vs. Delays", plotOutput("fareDelayPlot")),
+        tabPanel("Passengers vs. Delays", plotOutput("passengerDelayPlot")),
         tabPanel("Filtered Table", DTOutput("filteredTable"))
       )
     )
@@ -143,6 +159,48 @@ server <- function(input, output) {
       scale_fill_continuous(low = "white", high = "red", name = "Total Delays") +
       labs(title = "Delay Heatmap by State") +
       theme(legend.position = "right")
+  })
+  
+  ### Average fare vs. total delays scatter + trend ###
+  output$fareDelayPlot <- renderPlot({
+    # for each airport, grab its single AvgFare and total delays
+    df_fare <- filtered_data() %>%
+      group_by(airport_name, avg_fare) %>%
+      summarise(
+        Total_Delays = sum(arr_del15, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    ggplot(df_fare, aes(x = avg_fare, y = Total_Delays)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        title = "Airport Average Fare vs. Total Delays",
+        x     = "Average Fare ($)",
+        y     = "Total Delays"
+      ) +
+      theme_minimal()
+  })
+  
+  ### Passenger volume vs. total delays scatter + trend ###
+  output$passengerDelayPlot <- renderPlot({
+    # for each airport, grab its Pass10pct and total delays
+    df_pass <- filtered_data() %>%
+      group_by(airport_name, passengers_10_pct) %>%
+      summarise(
+        Total_Delays = sum(arr_del15, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    ggplot(df_pass, aes(x = passengers_10_pct, y = Total_Delays)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        title = "Airport Passenger Volume vs. Total Delays",
+        x     = "2024 Passengers (10% sample)",
+        y     = "Total Delays"
+      ) +
+      theme_minimal()
   })
   
   output$filteredTable <- renderDT({
