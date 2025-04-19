@@ -12,6 +12,7 @@ library(readr)
 library(lubridate)
 library(tidyr)
 library(usmap)
+library(stringr)
 
 # Load and clean data
 delay_data <- read_csv("Airline_Delay_Cause.csv")
@@ -29,16 +30,21 @@ if ("date" %in% colnames(delay_data)) {
   delay_data$date <- NA
 }
 
-# Remove rows with missing key information
+# Create date column and extract state from airport name
 delay_data_clean <- delay_data %>%
-  filter(!is.na(carrier_name), !is.na(airport_name), !is.na(Total_Delays))
+  mutate(
+    date = make_date(year, month, 1),
+    state = str_extract(airport_name, "([A-Z]{2})(?=:)")
+  ) %>%
+  filter(
+    !is.na(date),
+    !is.na(carrier_name),
+    !is.na(airport_name)
+  )
 
-# Convert categorical columns
-delay_data_clean$Airline <- as.factor(delay_data_clean$Airline)
-delay_data_clean$Airport <- as.factor(delay_data_clean$Airport)
 
 # Delay cause breakdown
-cause_columns <- c("Carrier_Delay", "Weather_Delay", "NAS_Delay", "Security_Delay", "Late_Aircraft_Delay")
+cause_columns <- c("carrier_delay", "weather_delay", "nas_delay", "security_delay", "late_aircraft_delay")
 
 delay_causes <- delay_data_clean %>%
   summarise(across(all_of(cause_columns), sum, na.rm = TRUE)) %>%
@@ -50,10 +56,10 @@ ui <- fluidPage(
   
   sidebarLayout(
     sidebarPanel(
-      dateRangeInput("date_range", "Filter by Date:", start = min(delay_data_clean$Date, na.rm = TRUE), 
-                     end = max(delay_data_clean$Date, na.rm = TRUE)),
-      selectInput("airline", "Select Airline:", choices = unique(delay_data_clean$Airline)),
-      selectInput("airport", "Select Airport:", choices = unique(delay_data_clean$Airport))
+      dateRangeInput("date_range", "Filter by Date:", start = min(delay_data_clean$date, na.rm = TRUE), 
+                     end = max(delay_data_clean$date, na.rm = TRUE)),
+      selectInput("airline", "Select Airline:", choices = unique(delay_data_clean$carrier_name)),
+      selectInput("airport", "Select Airport:", choices = unique(delay_data_clean$airport_name))
     ),
     
     mainPanel(
@@ -74,69 +80,74 @@ server <- function(input, output) {
   
   filtered_data <- reactive({
     delay_data_clean %>%
-      filter((is.na(Date) | (Date >= input$date_range[1] & Date <= input$date_range[2])))
+      filter((is.na(date) | (date >= input$date_range[1] & date <= input$date_range[2])))
   })
   
   output$topAirlinesPlot <- renderPlot({
     filtered_data() %>%
-      group_by(Airline) %>%
-      summarise(Total_Delays = sum(Total_Delays, na.rm = TRUE)) %>%
+      group_by(carrier_name) %>%
+      summarise(Total_Delays = sum(arr_del15, na.rm = TRUE)) %>%
       top_n(10, Total_Delays) %>%
-      ggplot(aes(x = reorder(Airline, -Total_Delays), y = Total_Delays, fill = Airline)) +
+      ggplot(aes(x = reorder(carrier_name, -Total_Delays), y = Total_Delays, fill = carrier_name)) +
       geom_bar(stat = "identity") +
       labs(title = "Top 10 Airlines by Total Delays", x = "Airline", y = "Total Delays") +
-      theme_minimal()
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
   })
   
   output$topAirportsPlot <- renderPlot({
     filtered_data() %>%
-      group_by(Airport) %>%
-      summarise(Total_Delays = sum(Total_Delays, na.rm = TRUE)) %>%
+      group_by(airport_name) %>%
+      summarise(Total_Delays = sum(arr_del15, na.rm = TRUE)) %>%
       top_n(10, Total_Delays) %>%
-      ggplot(aes(x = reorder(Airport, -Total_Delays), y = Total_Delays, fill = Airport)) +
+      ggplot(aes(x = reorder(airport_name, -Total_Delays), y = Total_Delays, fill = airport_name)) +
       geom_bar(stat = "identity") +
       labs(title = "Top 10 Airports by Total Delays", x = "Airport", y = "Total Delays") +
-      theme_minimal()
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
   })
   
   output$delayCausePlot <- renderPlot({
-    ggplot(delay_causes, aes(x = reorder(Cause, -Total), y = Total, fill = Cause)) +
+    filtered_data() %>%
+      summarise(Carrier = sum(carrier_ct, na.rm = TRUE),
+                Weather = sum(weather_ct, na.rm = TRUE),
+                NAS = sum(nas_ct, na.rm = TRUE),
+                Security = sum(security_ct, na.rm = TRUE),
+                Late_Aircraft = sum(late_aircraft_ct, na.rm = TRUE)) %>%
+      pivot_longer(cols = everything(), names_to = "Cause", values_to = "Total") %>%
+      ggplot(aes(x = reorder(Cause, -Total), y = Total, fill = Cause)) +
       geom_bar(stat = "identity") +
-      labs(title = "Total Delay by Cause", x = "Cause", y = "Total Delays") +
+      labs(title = "Total Delay by Cause", x = "Cause", y = "Total Delay Count") +
       theme_minimal()
   })
   
   output$avgDelayPlot <- renderPlot({
     filtered_data() %>%
-      group_by(Airline) %>%
-      summarise(Average_Delay = mean(Total_Delays, na.rm = TRUE)) %>%
+      group_by(carrier_name) %>%
+      summarise(Average_Delay = mean(arr_del15, na.rm = TRUE)) %>%
       top_n(10, Average_Delay) %>%
-      ggplot(aes(x = reorder(Airline, -Average_Delay), y = Average_Delay, fill = Airline)) +
+      ggplot(aes(x = reorder(carrier_name, -Average_Delay), y = Average_Delay, fill = carrier_name)) +
       geom_col() +
-      labs(title = "Top Airlines by Avg Delay per Flight", x = "Airline", y = "Average Delay") +
-      theme_minimal()
+      labs(title = "Top Airlines by Avg Delay per Flight", x = "Airline", y = "Average Delay Count") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
   })
   
   output$stateHeatmap <- renderPlot({
-    if ("State" %in% colnames(delay_data_clean)) {
-      state_summary <- filtered_data() %>%
-        group_by(State) %>%
-        summarise(Total_Delays = sum(Total_Delays, na.rm = TRUE))
-      
-      plot_usmap(data = state_summary, values = "Total_Delays", color = "white") +
-        scale_fill_continuous(name = "Total Delays", label = scales::comma) +
-        labs(title = "Heatmap of Delays by State") +
-        theme(legend.position = "right")
-    } else {
-      ggplot() + 
-        annotate("text", x = 1, y = 1, label = "No 'State' column available in dataset.", size = 6) +
-        theme_void()
-    }
+    state_data <- filtered_data() %>%
+      group_by(state) %>%
+      summarise(total_delays = sum(arr_del15, na.rm = TRUE)) %>%
+      filter(!is.na(state))
+    
+    plot_usmap(data = state_data, values = "total_delays", regions = "states") +
+      scale_fill_continuous(low = "white", high = "red", name = "Total Delays") +
+      labs(title = "Delay Heatmap by State") +
+      theme(legend.position = "right")
   })
   
   output$filteredTable <- renderDT({
     filtered_data() %>%
-      filter(Airline == input$airline | Airport == input$airport) %>%
+      filter(carrier_name == input$airline | airport_name == input$airport) %>%
       datatable(options = list(scrollX = TRUE))
   })
 }
