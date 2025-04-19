@@ -81,7 +81,7 @@ ui <- fluidPage(
         tabPanel("Top Airlines", plotOutput("topAirlinesPlot")),
         tabPanel("Top Airports", plotOutput("topAirportsPlot")),
         tabPanel("Delay Causes", plotOutput("delayCausePlot")),
-        tabPanel("Avg Delay per Flight", plotOutput("avgDelayPlot")),
+        tabPanel("Avg Delay Time", plotOutput("avgDelayPlot")),
         tabPanel("Delay Heatmap by State", plotOutput("stateHeatmap")),
         tabPanel("Fare vs. Delays", plotOutput("fareDelayPlot")),
         tabPanel("Passengers vs. Delays", plotOutput("passengerDelayPlot")),
@@ -113,10 +113,10 @@ server <- function(input, output) {
   
   output$topAirportsPlot <- renderPlot({
     filtered_data() %>%
-      group_by(airport_name) %>%
+      group_by(airport) %>%
       summarise(Total_Delays = sum(arr_del15, na.rm = TRUE)) %>%
       top_n(10, Total_Delays) %>%
-      ggplot(aes(x = reorder(airport_name, -Total_Delays), y = Total_Delays, fill = airport_name)) +
+      ggplot(aes(x = reorder(airport, -Total_Delays), y = Total_Delays, fill = airport)) +
       geom_bar(stat = "identity") +
       labs(title = "Top 10 Airports by Total Delays", x = "Airport", y = "Total Delays") +
       theme_minimal() +
@@ -144,7 +144,7 @@ server <- function(input, output) {
       top_n(10, Average_Delay) %>%
       ggplot(aes(x = reorder(carrier_name, -Average_Delay), y = Average_Delay, fill = carrier_name)) +
       geom_col() +
-      labs(title = "Top Airlines by Avg Delay per Flight", x = "Airline", y = "Average Delay Count") +
+      labs(title = "Top Airlines by Avg Delay Time", x = "Airline", y = "Average Delay Time") +
       theme_minimal() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
   })
