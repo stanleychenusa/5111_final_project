@@ -1,6 +1,6 @@
-install.packages("shiny")
-install.packages(c("dplyr", "ggplot2", "DT", "readr", "lubridate", "usmap", "tidyr"))
-setwd("C:\\Users\\PhotonUser\\My Files\\OneDrive\\Files\\STSCI5111")
+#install.packages("shiny")
+#install.packages(c("dplyr", "ggplot2", "DT", "readr", "lubridate", "usmap", "tidyr"))
+#setwd("C:\\Users\\PhotonUser\\My Files\\OneDrive\\Files\\STSCI5111")
 
 
 # Load required packages
@@ -19,16 +19,19 @@ delay_data <- read_csv("Airline_Delay_Cause.csv")
 # Clean column names
 colnames(delay_data) <- gsub("[^A-Za-z0-9_]", "_", colnames(delay_data))
 
+# Make date column
+delay_data$date <- as.Date(paste(delay_data$year, delay_data$month, "01", sep = "-"))
+
 # Ensure date column is correctly formatted
-if ("Date" %in% colnames(delay_data)) {
-  delay_data$Date <- as.Date(delay_data$Date)
+if ("date" %in% colnames(delay_data)) {
+  delay_data$date <- as.Date(delay_data$date)
 } else {
-  delay_data$Date <- NA
+  delay_data$date <- NA
 }
 
 # Remove rows with missing key information
 delay_data_clean <- delay_data %>%
-  filter(!is.na(Airline), !is.na(Airport), !is.na(Total_Delays))
+  filter(!is.na(carrier_name), !is.na(airport_name), !is.na(Total_Delays))
 
 # Convert categorical columns
 delay_data_clean$Airline <- as.factor(delay_data_clean$Airline)
