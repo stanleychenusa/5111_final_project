@@ -57,6 +57,29 @@ fare_keyed <- fare_passengers_data %>%
 delay_data_clean <- delay_data_clean %>%
   left_join(fare_keyed, by = "airport")
 
+
+airport_delay_data <- data.frame(
+  airport = c("DFW", "ATL", "ORD", "CLT", "DEN", "EWR", "MCO", "SFO", "LGA", "LAX"),
+  total_delays = c(34000, 29500, 31000, 26000, 28000, 22000, 24000, 21000, 20500, 23000),
+  total_flights_annual = c(726384, 800628, 843288, 553776, 678012, 369876, 420360, 411024, 366492, 565668)
+)
+
+# Calculate delays per 100 flights
+airport_delay_data$delays_per_100_flights <- (airport_delay_data$total_delays / airport_delay_data$total_flights_annual) * 100
+
+
+ggplot(airport_delay_data, aes(x = reorder(airport, -delays_per_100_flights), y = delays_per_100_flights, fill = airport)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Total Delays per 100 Flights by Airport",
+    x = "Airport",
+    y = "Delays per 100 Flights"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
 # Delay cause breakdown
 cause_columns <- c("carrier_delay", "weather_delay", "nas_delay", "security_delay", "late_aircraft_delay")
 
@@ -210,6 +233,4 @@ server <- function(input, output) {
   })
 }
 
-# Run the app
 shinyApp(ui = ui, server = server)
-
